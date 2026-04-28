@@ -106,17 +106,17 @@ function globToRegExp(glob: string): RegExp {
 }
 
 export function pathsAreSame(a: string, b: string): boolean {
-  try {
-    const sa = statSync(a);
-    const sb = statSync(b);
-    if (sa.dev === sb.dev && sa.ino === sb.ino && sa.ino !== 0) return true;
-  } catch {
-    // fall through to path comparison
-  }
   const ra = safeRealpath(a);
   const rb = safeRealpath(b);
   if (ra === rb) return true;
-  if (isCaseInsensitiveFs()) return ra.toLowerCase() === rb.toLowerCase();
+  if (isCaseInsensitiveFs() && ra.toLowerCase() === rb.toLowerCase()) return true;
+  try {
+    const sa = statSync(a, { bigint: true });
+    const sb = statSync(b, { bigint: true });
+    if (sa.dev === sb.dev && sa.ino === sb.ino && sa.ino !== 0n) return true;
+  } catch {
+    // both files may not exist; realpath comparison above is authoritative
+  }
   return false;
 }
 
