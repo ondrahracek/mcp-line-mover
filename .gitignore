@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.mcp-line-mover/
+*.tgz
+*.log
+.DS_Store
