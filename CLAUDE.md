@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-`move-lines-mcp` is a stdio **Model Context Protocol** server that lets coding agents move contiguous line ranges between files **without copying the text through their own context window**. The agent supplies only `(source_path, start_line, end_line, dest_path, dest_line, placement)`; the server reads, hashes, snapshots, and rewrites files internally.
+`mcp-line-mover` is a stdio **Model Context Protocol** server that lets coding agents move contiguous line ranges between files **without copying the text through their own context window**. The agent supplies only `(source_path, start_line, end_line, dest_path, dest_line, placement)`; the server reads, hashes, snapshots, and rewrites files internally.
 
 **[SPEC.md](SPEC.md) is the source of truth.** It uses RFC 2119 SHALL/SHOULD/MAY language and is detailed enough to drive implementation directly. When code and spec disagree, fix the code (or, if the spec is wrong, update the spec first and reference the change in the commit).
 

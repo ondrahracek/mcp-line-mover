@@ -1,4 +1,4 @@
-# move-lines-mcp
+# mcp-line-mover
 
 MCP stdio server that lets coding agents move contiguous line ranges between files **without copying the text through their own context window**. The agent supplies only `(source_path, start_line, end_line, dest_path, dest_line, placement)`; the server reads, hashes, snapshots, and rewrites files internally.
 

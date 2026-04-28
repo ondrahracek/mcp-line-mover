@@ -2,6 +2,24 @@
   "name": "@scope/mcp-line-mover",
   "version": "0.1.0",
   "description": "MCP stdio server for moving line ranges between files without copying content through agent context",
+  "license": "MIT",
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ondrahracek/mcp-line-mover.git"
+  },
+  "homepage": "https://github.com/ondrahracek/mcp-line-mover#readme",
+  "bugs": {
+    "url": "https://github.com/ondrahracek/mcp-line-mover/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "claude-code",
+    "refactor",
+    "move-lines"
+  ],
   "type": "module",
   "bin": {
     "mcp-line-mover": "dist/index.js"
@@ -23,7 +41,9 @@
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "lint": "eslint src test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test && npm run test:e2e"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
