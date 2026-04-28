@@ -15,6 +15,7 @@ export interface OperationRecord {
   updated_at: string;
   status: OperationStatus;
   description?: string;
+  workspace_root: string;
   source_path: string;
   start_line: number;
   end_line: number;
@@ -34,7 +35,10 @@ export interface OperationRecord {
   error?: { code: string; message: string };
 }
 
-export type OperationInput = Omit<OperationRecord, "operation_id" | "created_at" | "updated_at" | "status">;
+export type OperationInput = Omit<
+  OperationRecord,
+  "operation_id" | "created_at" | "updated_at" | "status" | "workspace_root"
+>;
 
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
@@ -50,15 +54,19 @@ export function generateOperationId(): string {
   return out;
 }
 
-function operationsDir(config: Config): string {
-  return resolveInternalPath(join(config.snapshotDir, "operations"), config);
+export function operationsDir(root: string, config: Config): string {
+  return resolveInternalPath(join(config.snapshotDir, "operations"), root);
 }
 
-function operationFile(id: string, config: Config): string {
-  return resolveInternalPath(join(config.snapshotDir, "operations", `${id}.json`), config);
+export function operationFile(id: string, root: string, config: Config): string {
+  return resolveInternalPath(join(config.snapshotDir, "operations", `${id}.json`), root);
 }
 
-export function createOperation(input: OperationInput, config: Config): OperationRecord {
+export function createOperation(
+  input: OperationInput,
+  root: string,
+  config: Config,
+): OperationRecord {
   const id = generateOperationId();
   const now = new Date().toISOString();
   const record: OperationRecord = {
@@ -66,15 +74,16 @@ export function createOperation(input: OperationInput, config: Config): Operatio
     created_at: now,
     updated_at: now,
     status: "previewed",
+    workspace_root: root,
     ...input,
   };
-  mkdirSync(operationsDir(config), { recursive: true });
-  writeAtomic(operationFile(id, config), JSON.stringify(record, null, 2));
+  mkdirSync(operationsDir(root, config), { recursive: true });
+  writeAtomic(operationFile(id, root, config), JSON.stringify(record, null, 2));
   return record;
 }
 
-export function loadOperation(id: string, config: Config): OperationRecord {
-  const file = operationFile(id, config);
+export function loadOperation(id: string, root: string, config: Config): OperationRecord {
+  const file = operationFile(id, root, config);
   if (!existsSync(file)) {
     throw new AppError("OPERATION_NOT_FOUND", `Operation ${id} not found`, {
       details: { operation_id: id },
@@ -86,6 +95,10 @@ export function loadOperation(id: string, config: Config): OperationRecord {
     return { ...record, status: "expired" };
   }
   return record;
+}
+
+export function operationFileExists(id: string, root: string, config: Config): boolean {
+  return existsSync(operationFile(id, root, config));
 }
 
 function isExpired(record: OperationRecord, config: Config): boolean {
@@ -105,9 +118,10 @@ export function updateOperation(
   id: string,
   expectedUpdatedAt: string,
   patch: Partial<OperationRecord>,
+  root: string,
   config: Config,
 ): OperationRecord {
-  const file = operationFile(id, config);
+  const file = operationFile(id, root, config);
   if (!existsSync(file)) {
     throw new AppError("OPERATION_NOT_FOUND", `Operation ${id} not found`);
   }
@@ -128,13 +142,20 @@ export function updateOperation(
     }
   }
   const updated_at = new Date().toISOString();
-  const next: OperationRecord = { ...current, ...patch, operation_id: current.operation_id, created_at: current.created_at, updated_at };
+  const next: OperationRecord = {
+    ...current,
+    ...patch,
+    operation_id: current.operation_id,
+    workspace_root: current.workspace_root,
+    created_at: current.created_at,
+    updated_at,
+  };
   writeAtomic(file, JSON.stringify(next, null, 2));
   return next;
 }
 
-export function listOperations(config: Config): OperationRecord[] {
-  const dir = operationsDir(config);
+export function listOperations(root: string, config: Config): OperationRecord[] {
+  const dir = operationsDir(root, config);
   if (!existsSync(dir)) return [];
   const records: OperationRecord[] = [];
   for (const name of readdirSync(dir)) {

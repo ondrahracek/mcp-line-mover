@@ -14,24 +14,26 @@ interface Manifest {
   entries: ManifestEntry[];
 }
 
-function snapshotDirFor(operationId: string, config: Config): string {
-  return resolveInternalPath(
-    join(config.snapshotDir, "snapshots", operationId),
-    config,
-  );
+function snapshotDirFor(operationId: string, root: string, config: Config): string {
+  return resolveInternalPath(join(config.snapshotDir, "snapshots", operationId), root);
 }
 
-function manifestPath(operationId: string, config: Config): string {
-  return join(snapshotDirFor(operationId, config), "manifest.json");
+function manifestPath(operationId: string, root: string, config: Config): string {
+  return join(snapshotDirFor(operationId, root, config), "manifest.json");
 }
 
-function workspaceRelative(absPath: string, config: Config): string {
-  return relative(config.root, absPath).split("\\").join("/");
+function workspaceRelative(absPath: string, root: string): string {
+  return relative(root, absPath).split("\\").join("/");
 }
 
-export function snapshot(operationId: string, absPaths: readonly string[], config: Config): void {
+export function snapshot(
+  operationId: string,
+  absPaths: readonly string[],
+  root: string,
+  config: Config,
+): void {
   for (const p of absPaths) {
-    const rel = relative(config.root, p);
+    const rel = relative(root, p);
     if (rel.startsWith("..") || /^([a-zA-Z]:)?[\\/]/.test(rel)) {
       throw new AppError(
         "PATH_OUTSIDE_WORKSPACE",
@@ -39,7 +41,7 @@ export function snapshot(operationId: string, absPaths: readonly string[], confi
       );
     }
   }
-  const dir = snapshotDirFor(operationId, config);
+  const dir = snapshotDirFor(operationId, root, config);
   try {
     mkdirSync(dir, { recursive: true });
   } catch (err) {
@@ -62,30 +64,30 @@ export function snapshot(operationId: string, absPaths: readonly string[], confi
       });
     }
     entries.push({
-      workspaceRelativePath: workspaceRelative(src, config),
+      workspaceRelativePath: workspaceRelative(src, root),
       snapshotFile: snapFile,
     });
   }
   const manifest: Manifest = { entries };
-  writeAtomic(manifestPath(operationId, config), JSON.stringify(manifest, null, 2));
+  writeAtomic(manifestPath(operationId, root, config), JSON.stringify(manifest, null, 2));
 }
 
-export function snapshotExists(operationId: string, config: Config): boolean {
-  return existsSync(manifestPath(operationId, config));
+export function snapshotExists(operationId: string, root: string, config: Config): boolean {
+  return existsSync(manifestPath(operationId, root, config));
 }
 
-export function restore(operationId: string, config: Config): string[] {
-  const mPath = manifestPath(operationId, config);
+export function restore(operationId: string, root: string, config: Config): string[] {
+  const mPath = manifestPath(operationId, root, config);
   if (!existsSync(mPath)) {
     throw new AppError("OPERATION_NOT_UNDOABLE", `Snapshot manifest missing for ${operationId}`, {
       details: { operation_id: operationId },
     });
   }
-  const dir = snapshotDirFor(operationId, config);
+  const dir = snapshotDirFor(operationId, root, config);
   const manifest = JSON.parse(readFileSync(mPath, "utf8")) as Manifest;
   const restored: string[] = [];
   for (const entry of manifest.entries) {
-    const target = resolveInternalPath(entry.workspaceRelativePath, config);
+    const target = resolveInternalPath(entry.workspaceRelativePath, root);
     const snapFile = join(dir, entry.snapshotFile);
     if (!existsSync(snapFile)) {
       throw new AppError("OPERATION_NOT_UNDOABLE", `Snapshot file missing: ${entry.snapshotFile}`, {

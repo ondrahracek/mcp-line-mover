@@ -20,15 +20,15 @@ afterEach(() => ws.cleanup());
 describe("resolveUserPath", () => {
   it("returns canonical absolute for relative input inside root", () => {
     ws.write("a.txt", "x");
-    const out = resolveUserPath("a.txt", ws.config);
+    const out = resolveUserPath("a.txt", ws.root, ws.config);
     expect(isAbsolute(out)).toBe(true);
     expect(out).toBe(join(ws.root, "a.txt"));
   });
 
   it("rejects parent traversal escaping root", () => {
-    expect(() => resolveUserPath("../../etc/passwd", ws.config)).toThrow(AppError);
+    expect(() => resolveUserPath("../../etc/passwd", ws.root, ws.config)).toThrow(AppError);
     try {
-      resolveUserPath("../../etc/passwd", ws.config);
+      resolveUserPath("../../etc/passwd", ws.root, ws.config);
     } catch (e) {
       expect((e as AppError).code).toBe("PATH_OUTSIDE_WORKSPACE");
     }
@@ -37,7 +37,7 @@ describe("resolveUserPath", () => {
   it("rejects absolute path outside root", () => {
     const outside = resolve(tmpdir(), "outside.txt");
     try {
-      resolveUserPath(outside, ws.config);
+      resolveUserPath(outside, ws.root, ws.config);
       expect.fail("should have thrown");
     } catch (e) {
       expect((e as AppError).code).toBe("PATH_OUTSIDE_WORKSPACE");
@@ -56,7 +56,7 @@ describe("resolveUserPath", () => {
       return;
     }
     try {
-      resolveUserPath("escape-link", ws.config);
+      resolveUserPath("escape-link", ws.root, ws.config);
       expect.fail("should have thrown");
     } catch (e) {
       expect((e as AppError).code).toBe("PATH_OUTSIDE_WORKSPACE");
@@ -71,7 +71,7 @@ describe("resolveUserPath", () => {
     } catch {
       return;
     }
-    const resolved = resolveUserPath("alias.txt", ws.config);
+    const resolved = resolveUserPath("alias.txt", ws.root, ws.config);
     expect(resolved.startsWith(ws.root)).toBe(true);
   });
 
@@ -79,54 +79,54 @@ describe("resolveUserPath", () => {
     mkdirSync(join(ws.root, ".git"), { recursive: true });
     writeFileSync(join(ws.root, ".git", "config"), "x");
     try {
-      resolveUserPath(".git/config", ws.config);
+      resolveUserPath(".git/config", ws.root, ws.config);
       expect.fail("should have thrown");
     } catch (e) {
       expect((e as AppError).code).toBe("PATH_DENIED");
     }
 
-    expect(() => resolveUserPath(".env", ws.config)).toThrow(AppError);
-    expect(() => resolveUserPath("nested/.env", ws.config)).toThrow(AppError);
-    expect(() => resolveUserPath("keys/cert.pem", ws.config)).toThrow(AppError);
-    expect(() => resolveUserPath("keys/private.key", ws.config)).toThrow(AppError);
-    expect(() => resolveUserPath("node_modules/foo/bar.js", ws.config)).toThrow(AppError);
+    expect(() => resolveUserPath(".env", ws.root, ws.config)).toThrow(AppError);
+    expect(() => resolveUserPath("nested/.env", ws.root, ws.config)).toThrow(AppError);
+    expect(() => resolveUserPath("keys/cert.pem", ws.root, ws.config)).toThrow(AppError);
+    expect(() => resolveUserPath("keys/private.key", ws.root, ws.config)).toThrow(AppError);
+    expect(() => resolveUserPath("node_modules/foo/bar.js", ws.root, ws.config)).toThrow(AppError);
   });
 
   it("rejects custom deny globs additively to defaults", () => {
     const cfg = ws.withEnv({ LINE_MOVER_DENY_GLOBS: "secrets/**,*.token" });
-    expect(() => resolveUserPath("secrets/a.txt", cfg)).toThrow(AppError);
-    expect(() => resolveUserPath("api.token", cfg)).toThrow(AppError);
-    expect(() => resolveUserPath(".git/x", cfg)).toThrow(AppError);
+    expect(() => resolveUserPath("secrets/a.txt", ws.root, cfg)).toThrow(AppError);
+    expect(() => resolveUserPath("api.token", ws.root, cfg)).toThrow(AppError);
+    expect(() => resolveUserPath(".git/x", ws.root, cfg)).toThrow(AppError);
   });
 
   it("denies paths inside the snapshot dir", () => {
-    expect(() => resolveUserPath(".mcp-line-mover/anything.json", ws.config)).toThrow(AppError);
+    expect(() => resolveUserPath(".mcp-line-mover/anything.json", ws.root, ws.config)).toThrow(AppError);
   });
 
   it("allows paths that do not yet exist", () => {
-    const out = resolveUserPath("subdir/new-file.txt", ws.config);
+    const out = resolveUserPath("subdir/new-file.txt", ws.root, ws.config);
     expect(out).toBe(join(ws.root, "subdir", "new-file.txt"));
   });
 
   it("realpath fallback when target missing but ancestor escapes still rejects", () => {
-    const out = resolveUserPath("a/b/c.txt", ws.config);
+    const out = resolveUserPath("a/b/c.txt", ws.root, ws.config);
     expect(out.startsWith(ws.root + sep) || out === ws.root).toBe(true);
   });
 
   it("handles paths with spaces and unicode", () => {
-    const out = resolveUserPath("with space/úní.txt", ws.config);
+    const out = resolveUserPath("with space/úní.txt", ws.root, ws.config);
     expect(out).toBe(join(ws.root, "with space", "úní.txt"));
   });
 });
 
 describe("resolveInternalPath", () => {
   it("workspace-confines but skips denylist", () => {
-    const out = resolveInternalPath(".mcp-line-mover/operations/abc.json", ws.config);
+    const out = resolveInternalPath(".mcp-line-mover/operations/abc.json", ws.root);
     expect(out).toBe(join(ws.root, ".mcp-line-mover", "operations", "abc.json"));
   });
 
   it("still rejects escapes", () => {
-    expect(() => resolveInternalPath("../escape", ws.config)).toThrow(AppError);
+    expect(() => resolveInternalPath("../escape", ws.root)).toThrow(AppError);
   });
 });
 

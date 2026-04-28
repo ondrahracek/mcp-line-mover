@@ -51,7 +51,7 @@ describe("undoOperation happy path", () => {
   it("status becomes undone", () => {
     const opId = executedOp();
     undoOperation({ operation_id: opId }, ws.config);
-    const op = loadOperation(opId, ws.config);
+    const op = loadOperation(opId, ws.root, ws.config);
     expect(op.status).toBe("undone");
   });
 
@@ -76,8 +76,8 @@ describe("undoOperation happy path", () => {
     const second = r2.operation_id;
     const r = undoOperation({}, ws.config);
     expect(r.ok).toBe(true);
-    expect(loadOperation(second, ws.config).status).toBe("undone");
-    expect(loadOperation(a, ws.config).status).toBe("executed");
+    expect(loadOperation(second, ws.root, ws.config).status).toBe("undone");
+    expect(loadOperation(a, ws.root, ws.config).status).toBe("executed");
   });
 
   it("response leaks no content", () => {

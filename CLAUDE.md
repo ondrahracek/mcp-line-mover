@@ -34,31 +34,37 @@ The package's `bin` entry must point to a shebanged `dist/index.js` so `npx -y @
 
 ## Architecture
 
-The system is organized around four MCP tools and an internal **operation record** that ties them together. Suggested layout:
+The system is organized around four MCP tools and an internal **operation record** that ties them together. Layout:
 
 ```
 src/
-  index.ts            # bin entry — wires StdioServerTransport, exits on EPIPE
-  server.ts           # Server registration, tool dispatch, error envelope
-  config.ts           # env-var parsing, defaults, frozen Config object
+  index.ts                   # bin entry — wires StdioServerTransport, exits on EPIPE
+  server.ts                  # Server registration, tool dispatch, error envelope
+  schemas.ts                 # zod input schemas for all four tools
   tools/
     previewMoveLines.ts
     executeOperation.ts
     moveLines.ts
     undoOperation.ts
+    validateMove.ts          # shared pre-mutation validation
+    applyMove.ts              # snapshot + write + rollback
   core/
-    paths.ts          # resolve + workspace-confine + denylist
-    files.ts          # read/write with LF/CRLF + final-newline preservation
-    hash.ts           # sha256 over bytes / over selected range
-    lineMath.ts       # 1-based inclusive range math, splice/insert
-    snapshots.ts      # write snapshot files, restore byte-for-byte
-    operations.ts     # CRUD over operation records (JSON on disk)
-    errors.ts         # AppError class keyed to spec §17 error codes
-  schemas.ts          # zod input schemas for all four tools
+    config.ts                # env parsing; produces frozen Config (incl. fixedRoot/null)
+    workspace.ts             # marker walk + per-call Workspace resolution
+    paths.ts                 # resolve + workspace-confine + denylist (root passed in)
+    files.ts                 # read/write with LF/CRLF + final-newline preservation
+    hash.ts                  # sha256 over bytes / over selected range
+    lineMath.ts              # 1-based inclusive range math, splice/insert
+    snapshots.ts             # write snapshot files, restore byte-for-byte
+    operations.ts            # CRUD over operation records (JSON under each root's snapshotDir)
+    operationLocator.ts      # cross-root op lookup via cwd + registry
+    registry.ts              # ~/.mcp-line-mover/roots.log — index of seen workspace roots
+    audit.ts                 # one-line stderr audit per tool call
+    errors.ts                # AppError class keyed to spec §17 error codes
 test/
-  unit/               # core/ helpers in isolation
-  integration/        # tool-level: spawn server, drive via in-process transport
-  fixtures/
+  unit/                      # core helpers in isolation
+  integration/               # tool-level + multi-root + acceptance
+  e2e/                       # spawns the built binary via stdio
 ```
 
 ### Tool boundaries
@@ -94,7 +100,11 @@ The snapshot directory must be created lazily and added to no global state. It m
 
 These are easy to violate and break the security model. Treat as load-bearing:
 
-- **Workspace confinement.** Resolve all input paths via `path.resolve` against `LINE_MOVER_ROOT`, then `fs.realpath` to canonicalize, then verify the canonical path starts with `realpath(LINE_MOVER_ROOT) + sep`. Reject parent-traversal, absolute paths outside root, and symlink escapes. Do this **once at the boundary**, not per-operation.
+- **Workspace identification.** Two modes:
+  - *Fixed* — `LINE_MOVER_ROOT` set; `Config.fixedRoot` is the canonical root used for every call.
+  - *Inferred* — unset; each tool call resolves its own root from input paths via `resolveWorkspaceForPaths`. Inferred roots must (a) contain a marker (default `.git`, file or directory), (b) be found within `LINE_MOVER_MAX_ROOT_WALK` levels, (c) **not equal `os.homedir()`** — refuse if it does.
+  - Cross-call lookup (execute/undo) consults `process.cwd()` first, then the registry (`~/.mcp-line-mover/roots.log`). The registry holds *paths only*; it is an index, not a security boundary. A leaked or tampered registry can cause "id not found" errors but cannot cause incorrect mutations.
+- **Workspace confinement.** Resolve all input paths via `path.resolve` against the resolved workspace root, then `fs.realpath` to canonicalize, then verify the canonical path starts with `realpath(root) + sep`. Reject parent-traversal, absolute paths outside root, and symlink escapes. Do this **once at the boundary**, not per-operation.
 - **Denylist.** `.git/**`, `node_modules/**`, `.env`, `**/.env`, `**/*.pem`, `**/*.key` rejected by default. Configurable via `LINE_MOVER_DENY_GLOBS` (comma-separated globs, additive to defaults — do not let users disable the defaults silently).
 - **Hashing.** SHA-256 over exact file bytes. The selected-range hash is over the exact bytes of lines `start_line..end_line` inclusive as the server interprets them, including their line terminators as found in the source.
 - **Line-ending preservation.** Detect per file (look at the first terminator; default LF if file has none). Preserve when writing. Preserve final-newline convention (file ends in newline iff it did before).
@@ -115,7 +125,7 @@ These are easy to violate and break the security model. Treat as load-bearing:
 All config via env vars (passed through MCP client config under `env`). Parse once at startup into a frozen object.
 
 ```
-LINE_MOVER_ROOT                 # default: process.cwd()
+LINE_MOVER_ROOT                 # default: unset (inferred mode); set to pin to a fixed workspace
 LINE_MOVER_MAX_LINES            # default: 2000
 LINE_MOVER_MAX_FILE_SIZE_MB     # default: 5
 LINE_MOVER_ALLOW_CREATE         # default: false   (governs create_dest_if_missing)
@@ -123,6 +133,9 @@ LINE_MOVER_CREATE_PARENT_DIRS   # default: false
 LINE_MOVER_DENY_GLOBS           # comma-separated, additive to built-ins
 LINE_MOVER_SNAPSHOT_DIR         # default: .mcp-line-mover
 LINE_MOVER_OPERATION_TTL_DAYS   # default: 14
+LINE_MOVER_ROOT_MARKERS         # default: .git (comma-separated; first match wins)
+LINE_MOVER_MAX_ROOT_WALK        # default: 25 (hard cap 100)
+LINE_MOVER_REGISTRY_DIR         # default: <home>/.mcp-line-mover
 ```
 
 ## Error Contract

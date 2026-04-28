@@ -21,16 +21,16 @@ export interface ValidatedMove {
   movedLineCount: number;
 }
 
-export function validateMove(rawInput: MoveInput, config: Config): ValidatedMove {
+export function validateMove(rawInput: MoveInput, root: string, config: Config): ValidatedMove {
   const placement = rawInput.placement ?? "after";
   const remove_from_source = rawInput.remove_from_source ?? true;
   const create_dest_if_missing = rawInput.create_dest_if_missing ?? config.allowCreate;
   const create_parent_dirs = rawInput.create_parent_dirs ?? config.createParentDirs;
 
-  const sourceAbs = resolveUserPath(rawInput.source_path, config);
-  const destAbs = resolveUserPath(rawInput.dest_path, config);
+  const sourceAbs = resolveUserPath(rawInput.source_path, root, config);
+  const destAbs = resolveUserPath(rawInput.dest_path, root, config);
 
-  if (rawInput.source_path === rawInput.dest_path || pathsAreSame(sourceAbs, destAbs)) {
+  if (pathsAreSame(sourceAbs, destAbs)) {
     throw new AppError(
       "SAME_FILE_MOVE_UNSUPPORTED",
       "Same-file moves are not supported in this version",

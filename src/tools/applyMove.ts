@@ -17,11 +17,12 @@ export interface AppliedMove {
 export function applyMove(
   operationId: string,
   v: ValidatedMove,
+  root: string,
   config: Config,
 ): AppliedMove {
   const filesToSnapshot = [v.sourceAbs];
   if (v.destExisted) filesToSnapshot.push(v.destAbs);
-  snapshot(operationId, filesToSnapshot, config);
+  snapshot(operationId, filesToSnapshot, root, config);
 
   const movedPayload = extractRange(v.sourceFile.lines, v.input.start_line, v.input.end_line);
 
@@ -57,7 +58,7 @@ export function applyMove(
     writtenFiles.push(v.destAbs);
   } catch (err) {
     try {
-      restore(operationId, config);
+      restore(operationId, root, config);
     } catch {
       // nested failure during rollback; original error wins
     }

@@ -34,7 +34,7 @@ describe("moveLines happy path", () => {
     expect(r.operation_id).toMatch(/^[0-9A-Z]+$/);
     expect(ws.read("a.txt").toString()).toBe("S1\nS4\nS5\n");
     expect(ws.read("b.txt").toString()).toBe("X1\nS2\nS3\nX2\n");
-    const op = loadOperation(r.operation_id, ws.config);
+    const op = loadOperation(r.operation_id, ws.root, ws.config);
     expect(op.status).toBe("executed");
   });
 

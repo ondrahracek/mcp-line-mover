@@ -63,7 +63,7 @@ describe("executeOperation happy path", () => {
   it("operation marked executed with post-hashes populated", () => {
     const p = preview();
     executeOperation({ operation_id: p.operation_id }, ws.config);
-    const op = loadOperation(p.operation_id, ws.config);
+    const op = loadOperation(p.operation_id, ws.root, ws.config);
     expect(op.status).toBe("executed");
     expect(op.source_file_hash_after).toMatch(/^[0-9a-f]{64}$/);
     expect(op.dest_file_hash_after).toMatch(/^[0-9a-f]{64}$/);

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, DEFAULT_DENY_GLOBS } from "../../src/core/config.js";
+import { loadConfig, DEFAULT_DENY_GLOBS, DEFAULT_ROOT_MARKERS } from "../../src/core/config.js";
 import { AppError } from "../../src/core/errors.js";
 
 let root: string;
@@ -18,19 +18,23 @@ afterEach(() => {
 describe("loadConfig defaults", () => {
   it("matches spec §13 defaults", () => {
     const cfg = loadConfig({}, root);
-    expect(cfg.root).toBe(root);
+    expect(cfg.fixedRoot).toBeNull();
     expect(cfg.maxLines).toBe(2000);
     expect(cfg.maxFileSizeMb).toBe(5);
     expect(cfg.allowCreate).toBe(false);
     expect(cfg.createParentDirs).toBe(false);
     expect(cfg.snapshotDir).toBe(".mcp-line-mover");
     expect(cfg.operationTtlDays).toBe(14);
+    expect(cfg.maxRootWalk).toBe(25);
+    expect(cfg.rootMarkers).toEqual([...DEFAULT_ROOT_MARKERS]);
+    expect(cfg.registryDir).toBe(join(homedir(), ".mcp-line-mover"));
   });
 
   it("returns a frozen object", () => {
     const cfg = loadConfig({}, root);
     expect(Object.isFrozen(cfg)).toBe(true);
     expect(Object.isFrozen(cfg.denyGlobs)).toBe(true);
+    expect(Object.isFrozen(cfg.rootMarkers)).toBe(true);
   });
 
   it("includes default deny globs", () => {
@@ -53,12 +57,19 @@ describe("loadConfig env parsing", () => {
         LINE_MOVER_MAX_LINES: "500",
         LINE_MOVER_MAX_FILE_SIZE_MB: "10",
         LINE_MOVER_OPERATION_TTL_DAYS: "30",
+        LINE_MOVER_MAX_ROOT_WALK: "40",
       },
       root,
     );
     expect(cfg.maxLines).toBe(500);
     expect(cfg.maxFileSizeMb).toBe(10);
     expect(cfg.operationTtlDays).toBe(30);
+    expect(cfg.maxRootWalk).toBe(40);
+  });
+
+  it("clamps maxRootWalk to hard cap of 100", () => {
+    const cfg = loadConfig({ LINE_MOVER_MAX_ROOT_WALK: "9999" }, root);
+    expect(cfg.maxRootWalk).toBe(100);
   });
 
   it("rejects non-numeric values without coercing", () => {
@@ -96,17 +107,37 @@ describe("loadConfig env parsing", () => {
     expect(cfg.denyGlobs).toContain("y/**");
     expect(cfg.denyGlobs).not.toContain("");
   });
+
+  it("ROOT_MARKERS overrides default; order preserved", () => {
+    const cfg = loadConfig({ LINE_MOVER_ROOT_MARKERS: "package.json,.git" }, root);
+    expect(cfg.rootMarkers).toEqual(["package.json", ".git"]);
+  });
+
+  it("ROOT_MARKERS empty string falls back to default", () => {
+    const cfg = loadConfig({ LINE_MOVER_ROOT_MARKERS: "" }, root);
+    expect(cfg.rootMarkers).toEqual([...DEFAULT_ROOT_MARKERS]);
+  });
+
+  it("REGISTRY_DIR overrides default", () => {
+    const cfg = loadConfig({ LINE_MOVER_REGISTRY_DIR: "/tmp/x" }, root);
+    expect(cfg.registryDir).toBe("/tmp/x");
+  });
 });
 
 describe("loadConfig root resolution", () => {
-  it("realpaths the configured root", () => {
+  it("fixedRoot is realpath of LINE_MOVER_ROOT when set", () => {
     const cfg = loadConfig({ LINE_MOVER_ROOT: root }, "/some/other/cwd");
-    expect(cfg.root).toBe(realpathSync(root));
+    expect(cfg.fixedRoot).toBe(realpathSync(root));
   });
 
-  it("uses fallback cwd when LINE_MOVER_ROOT not set", () => {
+  it("fixedRoot is null when LINE_MOVER_ROOT not set", () => {
     const cfg = loadConfig({}, root);
-    expect(cfg.root).toBe(root);
+    expect(cfg.fixedRoot).toBeNull();
+  });
+
+  it("fixedRoot is null when LINE_MOVER_ROOT is empty string", () => {
+    const cfg = loadConfig({ LINE_MOVER_ROOT: "" }, root);
+    expect(cfg.fixedRoot).toBeNull();
   });
 
   it("rejects when configured root does not exist", () => {

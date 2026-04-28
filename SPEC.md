@@ -528,6 +528,7 @@ created_at
 updated_at
 status
 description
+workspace_root
 source_path
 start_line
 end_line
@@ -546,6 +547,11 @@ dest_file_hash_after
 warnings
 error
 ```
+
+`workspace_root` SHALL be the absolute realpath of the workspace this operation
+belongs to. It is set at preview/move time and never mutated. It is used by
+`execute_operation` and `undo_operation` to locate the correct operation record
+and snapshot directory across multi-root deployments (see §12).
 
 ### Operation Statuses
 
@@ -657,11 +663,63 @@ The server SHALL treat filesystem access as sensitive.
 
 ### Workspace Root
 
-The workspace root SHALL default to the server process current working directory.
+The workspace root MAY be supplied in two modes:
 
-The workspace root MAY be overridden by configuration.
+- **Fixed mode** — `LINE_MOVER_ROOT` is set. The configured root is used for all
+  tool calls. Behavior matches the original single-root model.
+- **Inferred mode** — `LINE_MOVER_ROOT` is unset. Each tool call infers its
+  workspace root from the supplied input paths (see §12.2).
 
-All file operations SHALL be restricted to the workspace root.
+All file operations SHALL be restricted to the resolved workspace root for that
+call.
+
+### Per-Call Root Inference
+
+When `LINE_MOVER_ROOT` is unset, the server SHALL determine the workspace root
+per tool call by walking up from each input path until a configured **root
+marker** is found.
+
+```text
+Default marker: .git (file or directory)
+Override:       LINE_MOVER_ROOT_MARKERS  (comma-separated, first match wins)
+Walk depth:     LINE_MOVER_MAX_ROOT_WALK (default 25, hard cap 100)
+```
+
+Marker matching SHALL accept either a file or a directory at the candidate path
+(this allows git worktrees, where `.git` is a file pointer).
+
+The server SHALL refuse a tool call when:
+
+- No marker is found within `LINE_MOVER_MAX_ROOT_WALK` levels of any input path.
+- Multiple input paths infer to different workspace roots.
+- The inferred root equals `os.homedir()`.
+
+In all such cases the server SHALL return `PATH_OUTSIDE_WORKSPACE` with a
+`recommended_action` describing remediation (typically "set `LINE_MOVER_ROOT`
+explicitly" or "operate inside a marked directory").
+
+### Cross-Call Operation Lookup
+
+Operations created in inferred mode are stored under
+`<inferred-root>/${LINE_MOVER_SNAPSHOT_DIR}/`. To allow `execute_operation` and
+`undo_operation` to locate operations regardless of the current working
+directory, the server SHALL maintain a **registry** at
+`${LINE_MOVER_REGISTRY_DIR}/roots.log` (default
+`<os.homedir()>/.mcp-line-mover/roots.log`).
+
+The registry SHALL contain only absolute paths of workspace roots seen by the
+server. It SHALL NOT contain operation data, hashes, or any other state.
+
+Operation lookup SHALL try, in order:
+
+```text
+1. The inferred root from process.cwd().
+2. Each registered root (pruning entries whose directories no longer exist).
+```
+
+If the same `operation_id` is found in multiple registered roots, the server
+SHALL refuse with `OPERATION_NOT_FOUND` and surface the matched roots in the
+error details.
 
 ### Path Resolution
 
@@ -721,6 +779,9 @@ LINE_MOVER_CREATE_PARENT_DIRS
 LINE_MOVER_DENY_GLOBS
 LINE_MOVER_SNAPSHOT_DIR
 LINE_MOVER_OPERATION_TTL_DAYS
+LINE_MOVER_ROOT_MARKERS
+LINE_MOVER_MAX_ROOT_WALK
+LINE_MOVER_REGISTRY_DIR
 ```
 
 ### Default Values
@@ -728,13 +789,16 @@ LINE_MOVER_OPERATION_TTL_DAYS
 Recommended defaults:
 
 ```text
-LINE_MOVER_ROOT = process current working directory
-LINE_MOVER_MAX_LINES = 2000
+LINE_MOVER_ROOT             = unset (inferred mode; see §12.2)
+LINE_MOVER_MAX_LINES        = 2000
 LINE_MOVER_MAX_FILE_SIZE_MB = 5
-LINE_MOVER_ALLOW_CREATE = false
+LINE_MOVER_ALLOW_CREATE     = false
 LINE_MOVER_CREATE_PARENT_DIRS = false
-LINE_MOVER_SNAPSHOT_DIR = .mcp-line-mover
+LINE_MOVER_SNAPSHOT_DIR     = .mcp-line-mover
 LINE_MOVER_OPERATION_TTL_DAYS = 14
+LINE_MOVER_ROOT_MARKERS     = .git
+LINE_MOVER_MAX_ROOT_WALK    = 25
+LINE_MOVER_REGISTRY_DIR     = <os.homedir()>/.mcp-line-mover
 ```
 
 ## 14. Line Handling Rules

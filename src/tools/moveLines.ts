@@ -1,5 +1,8 @@
+import { isAbsolute, resolve } from "node:path";
 import { toEnvelope, type ErrorEnvelope } from "../core/errors.js";
 import { createOperation, updateOperation, loadOperation } from "../core/operations.js";
+import { resolveWorkspaceForPaths } from "../core/workspace.js";
+import { registerRoot } from "../core/registry.js";
 import type { Config } from "../core/config.js";
 import { moveInputSchema, type MoveInput } from "../schemas.js";
 import { validateMove } from "./validateMove.js";
@@ -19,9 +22,15 @@ export type MoveResult = MoveSuccess | ErrorEnvelope;
 
 export function moveLines(rawInput: unknown, config: Config): MoveResult {
   let opId: string | undefined;
+  let workspaceRoot: string | undefined;
   try {
     const parsed = moveInputSchema.parse(rawInput) as MoveInput;
-    const v = validateMove(parsed, config);
+    const workspace = resolveWorkspaceForPaths(
+      [toAbs(parsed.source_path), toAbs(parsed.dest_path)],
+      config,
+    );
+    workspaceRoot = workspace.root;
+    const v = validateMove(parsed, workspace.root, config);
 
     const warnings: string[] = [];
     if (!v.destExisted) warnings.push("destination file created");
@@ -47,11 +56,12 @@ export function moveLines(rawInput: unknown, config: Config): MoveResult {
         selected_range_hash_before: v.rangeHash,
         warnings,
       },
+      workspace.root,
       config,
     );
     opId = op.operation_id;
 
-    const applied = applyMove(op.operation_id, v, config);
+    const applied = applyMove(op.operation_id, v, workspace.root, config);
 
     updateOperation(
       op.operation_id,
@@ -61,8 +71,13 @@ export function moveLines(rawInput: unknown, config: Config): MoveResult {
         source_file_hash_after: applied.source_file_hash_after,
         dest_file_hash_after: applied.dest_file_hash_after,
       },
+      workspace.root,
       config,
     );
+
+    if (workspace.inferred) {
+      registerRoot(workspace.root, config);
+    }
 
     return {
       ok: true,
@@ -78,9 +93,9 @@ export function moveLines(rawInput: unknown, config: Config): MoveResult {
       ],
     };
   } catch (err) {
-    if (opId) {
+    if (opId && workspaceRoot) {
       try {
-        const reloaded = loadOperation(opId, config);
+        const reloaded = loadOperation(opId, workspaceRoot, config);
         if (reloaded.status === "previewed") {
           updateOperation(
             opId,
@@ -92,6 +107,7 @@ export function moveLines(rawInput: unknown, config: Config): MoveResult {
                 message: (err as Error).message ?? String(err),
               },
             },
+            workspaceRoot,
             config,
           );
         }
@@ -101,4 +117,8 @@ export function moveLines(rawInput: unknown, config: Config): MoveResult {
     }
     return toEnvelope(err);
   }
+}
+
+function toAbs(p: string): string {
+  return isAbsolute(p) ? p : resolve(process.cwd(), p);
 }

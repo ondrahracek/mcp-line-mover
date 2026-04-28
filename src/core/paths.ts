@@ -3,9 +3,9 @@ import { isAbsolute, resolve, sep, normalize, relative } from "node:path";
 import { AppError } from "./errors.js";
 import type { Config } from "./config.js";
 
-export function resolveUserPath(input: string, config: Config): string {
-  const resolved = resolveSafe(input, config);
-  if (isPathDenied(relative(config.root, resolved), config.denyGlobs)) {
+export function resolveUserPath(input: string, root: string, config: Config): string {
+  const resolved = resolveSafe(input, root);
+  if (isPathDenied(relative(root, resolved), config.denyGlobs)) {
     throw new AppError("PATH_DENIED", `Path is denied by policy: ${input}`, {
       details: { path: input },
       recommendedAction: "use a different path or adjust LINE_MOVER_DENY_GLOBS",
@@ -14,12 +14,11 @@ export function resolveUserPath(input: string, config: Config): string {
   return resolved;
 }
 
-export function resolveInternalPath(input: string, config: Config): string {
-  return resolveSafe(input, config);
+export function resolveInternalPath(input: string, root: string): string {
+  return resolveSafe(input, root);
 }
 
-function resolveSafe(input: string, config: Config): string {
-  const root = config.root;
+function resolveSafe(input: string, root: string): string {
   const candidate = isAbsolute(input) ? normalize(input) : resolve(root, input);
   const resolved = realpathDeep(candidate);
 

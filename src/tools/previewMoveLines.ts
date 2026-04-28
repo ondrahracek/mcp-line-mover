@@ -1,6 +1,8 @@
-import { basename } from "node:path";
+import { basename, isAbsolute, resolve } from "node:path";
 import { toEnvelope, type ErrorEnvelope } from "../core/errors.js";
 import { createOperation } from "../core/operations.js";
+import { resolveWorkspaceForPaths } from "../core/workspace.js";
+import { registerRoot } from "../core/registry.js";
 import type { Config } from "../core/config.js";
 import { moveInputSchema, type MoveInput } from "../schemas.js";
 import { validateMove } from "./validateMove.js";
@@ -24,7 +26,11 @@ export type PreviewResult = PreviewSuccess | ErrorEnvelope;
 export function previewMoveLines(rawInput: unknown, config: Config): PreviewResult {
   try {
     const parsed = moveInputSchema.parse(rawInput) as MoveInput;
-    const v = validateMove(parsed, config);
+    const workspace = resolveWorkspaceForPaths(
+      [toAbs(parsed.source_path), toAbs(parsed.dest_path)],
+      config,
+    );
+    const v = validateMove(parsed, workspace.root, config);
 
     const warnings: string[] = [];
     if (!v.destExisted) warnings.push("destination file will be created on execution");
@@ -52,8 +58,13 @@ export function previewMoveLines(rawInput: unknown, config: Config): PreviewResu
         selected_range_hash_before: v.rangeHash,
         warnings,
       },
+      workspace.root,
       config,
     );
+
+    if (workspace.inferred) {
+      registerRoot(workspace.root, config);
+    }
 
     return {
       ok: true,
@@ -71,6 +82,10 @@ export function previewMoveLines(rawInput: unknown, config: Config): PreviewResu
   } catch (err) {
     return toEnvelope(err);
   }
+}
+
+function toAbs(p: string): string {
+  return isAbsolute(p) ? p : resolve(process.cwd(), p);
 }
 
 function buildSummary(v: ReturnType<typeof validateMove>): string {

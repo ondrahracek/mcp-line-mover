@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { AppError, toEnvelope, type ErrorEnvelope } from "../core/errors.js";
-import { loadOperation, updateOperation } from "../core/operations.js";
+import { updateOperation, loadOperation } from "../core/operations.js";
+import { locateOperation } from "../core/operationLocator.js";
 import { resolveUserPath, pathsAreSame } from "../core/paths.js";
 import { readTextFile, parseTextBytes } from "../core/files.js";
 import { sha256, EMPTY_SHA256, hashRange } from "../core/hash.js";
@@ -23,10 +24,13 @@ export type ExecuteResult = ExecuteSuccess | ErrorEnvelope;
 
 export function executeOperation(rawInput: unknown, config: Config): ExecuteResult {
   let opId: string | undefined;
+  let workspaceRoot: string | undefined;
   try {
     const input = executeInputSchema.parse(rawInput);
     opId = input.operation_id;
-    const op = loadOperation(input.operation_id, config);
+    const located = locateOperation(input.operation_id, config);
+    const op = located.record;
+    workspaceRoot = located.workspace.root;
 
     if (op.status === "expired") {
       throw new AppError("OPERATION_NOT_FOUND", `Operation ${input.operation_id} has expired`, {
@@ -47,8 +51,8 @@ export function executeOperation(rawInput: unknown, config: Config): ExecuteResu
       );
     }
 
-    const sourceAbs = resolveUserPath(op.source_path, config);
-    const destAbs = resolveUserPath(op.dest_path, config);
+    const sourceAbs = resolveUserPath(op.source_path, workspaceRoot, config);
+    const destAbs = resolveUserPath(op.dest_path, workspaceRoot, config);
     if (pathsAreSame(sourceAbs, destAbs)) {
       throw new AppError("SAME_FILE_MOVE_UNSUPPORTED", "Same-file moves are not supported");
     }
@@ -62,32 +66,22 @@ export function executeOperation(rawInput: unknown, config: Config): ExecuteResu
     const rangeHash = hashRange(sourceFile.lines, op.start_line, op.end_line, sourceFile.eol);
 
     if (sourceFileHash !== op.source_file_hash_before) {
-      throw new AppError(
-        "FILE_CHANGED_SINCE_PREVIEW",
-        `Source file changed since preview`,
-        {
-          details: { path: op.source_path },
-          recommendedAction: "re-run preview_move_lines",
-        },
-      );
+      throw new AppError("FILE_CHANGED_SINCE_PREVIEW", `Source file changed since preview`, {
+        details: { path: op.source_path },
+        recommendedAction: "re-run preview_move_lines",
+      });
     }
     if (destFileHash !== op.dest_file_hash_before) {
-      throw new AppError(
-        "FILE_CHANGED_SINCE_PREVIEW",
-        `Destination file changed since preview`,
-        {
-          details: { path: op.dest_path },
-          recommendedAction: "re-run preview_move_lines",
-        },
-      );
+      throw new AppError("FILE_CHANGED_SINCE_PREVIEW", `Destination file changed since preview`, {
+        details: { path: op.dest_path },
+        recommendedAction: "re-run preview_move_lines",
+      });
     }
     if (rangeHash !== op.selected_range_hash_before) {
       throw new AppError(
         "FILE_CHANGED_SINCE_PREVIEW",
         `Selected range bytes changed since preview`,
-        {
-          recommendedAction: "re-run preview_move_lines",
-        },
+        { recommendedAction: "re-run preview_move_lines" },
       );
     }
 
@@ -115,7 +109,7 @@ export function executeOperation(rawInput: unknown, config: Config): ExecuteResu
       movedLineCount: op.moved_line_count,
     };
 
-    const applied = applyMove(op.operation_id, v, config);
+    const applied = applyMove(op.operation_id, v, workspaceRoot, config);
 
     updateOperation(
       op.operation_id,
@@ -125,6 +119,7 @@ export function executeOperation(rawInput: unknown, config: Config): ExecuteResu
         source_file_hash_after: applied.source_file_hash_after,
         dest_file_hash_after: applied.dest_file_hash_after,
       },
+      workspaceRoot,
       config,
     );
 
@@ -142,14 +137,15 @@ export function executeOperation(rawInput: unknown, config: Config): ExecuteResu
       ],
     };
   } catch (err) {
-    if (err instanceof AppError && opId) {
+    if (err instanceof AppError && opId && workspaceRoot) {
       try {
-        const op = loadOperation(opId, config);
+        const op = loadOperation(opId, workspaceRoot, config);
         if (op.status === "previewed") {
           updateOperation(
             opId,
             op.updated_at,
             { status: "failed", error: { code: err.code, message: err.message } },
+            workspaceRoot,
             config,
           );
         }

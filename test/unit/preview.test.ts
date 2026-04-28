@@ -71,7 +71,7 @@ describe("previewMoveLines happy path", () => {
       ws.config,
     );
     if (!out.ok) throw new Error("expected ok");
-    const ops = listOperations(ws.config);
+    const ops = listOperations(ws.root, ws.config);
     expect(ops.length).toBe(1);
     const op = ops[0]!;
     expect(op.operation_id).toBe(out.operation_id);

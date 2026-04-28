@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { AppError, toEnvelope, type ErrorEnvelope } from "../core/errors.js";
-import { loadOperation, listOperations, updateOperation } from "../core/operations.js";
+import { updateOperation } from "../core/operations.js";
+import { locateOperation, locateMostRecentExecutedOperation } from "../core/operationLocator.js";
 import { resolveUserPath } from "../core/paths.js";
 import { restore, snapshotExists } from "../core/snapshots.js";
 import { sha256, EMPTY_SHA256 } from "../core/hash.js";
@@ -20,20 +21,13 @@ export function undoOperation(rawInput: unknown, config: Config): UndoResult {
   try {
     const input = undoInputSchema.parse(rawInput);
 
-    let opId = input.operation_id;
-    if (!opId) {
-      const ops = listOperations(config).filter((o) => o.status === "executed");
-      if (ops.length === 0) {
-        throw new AppError(
-          "OPERATION_NOT_FOUND",
-          "No executed operation available to undo",
-          { recommendedAction: "specify operation_id explicitly" },
-        );
-      }
-      opId = ops[0]!.operation_id;
-    }
+    const located = input.operation_id
+      ? locateOperation(input.operation_id, config)
+      : locateMostRecentExecutedOperation(config);
 
-    const op = loadOperation(opId, config);
+    const op = located.record;
+    const root = located.workspace.root;
+    const opId = op.operation_id;
 
     if (op.status !== "executed") {
       throw new AppError(
@@ -43,7 +37,7 @@ export function undoOperation(rawInput: unknown, config: Config): UndoResult {
       );
     }
 
-    if (!snapshotExists(opId, config)) {
+    if (!snapshotExists(opId, root, config)) {
       throw new AppError(
         "OPERATION_NOT_UNDOABLE",
         `Snapshot missing for operation ${opId}`,
@@ -51,8 +45,8 @@ export function undoOperation(rawInput: unknown, config: Config): UndoResult {
       );
     }
 
-    const sourceAbs = resolveUserPath(op.source_path, config);
-    const destAbs = resolveUserPath(op.dest_path, config);
+    const sourceAbs = resolveUserPath(op.source_path, root, config);
+    const destAbs = resolveUserPath(op.dest_path, root, config);
 
     const sourceCurrentHash = existsSync(sourceAbs) ? sha256(readFileSync(sourceAbs)) : EMPTY_SHA256;
     const destCurrentHash = existsSync(destAbs) ? sha256(readFileSync(destAbs)) : EMPTY_SHA256;
@@ -78,8 +72,8 @@ export function undoOperation(rawInput: unknown, config: Config): UndoResult {
       );
     }
 
-    const restored = restore(opId, config);
-    updateOperation(opId, op.updated_at, { status: "undone" }, config);
+    const restored = restore(opId, root, config);
+    updateOperation(opId, op.updated_at, { status: "undone" }, root, config);
 
     return {
       ok: true,
