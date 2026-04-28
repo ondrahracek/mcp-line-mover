@@ -13,7 +13,7 @@ In your MCP client config (e.g. `~/.claude.json` for Claude Code):
   "mcpServers": {
     "line-mover": {
       "command": "npx",
-      "args": ["-y", "@scope/mcp-line-mover"]
+      "args": ["-y", "mcp-line-mover"]
     }
   }
 }

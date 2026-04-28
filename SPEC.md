@@ -41,7 +41,7 @@ The intended client configuration SHALL follow this shape:
   "mcpServers": {
     "line-mover": {
       "command": "npx",
-      "args": ["-y", "@scope/mcp-line-mover"]
+      "args": ["-y", "mcp-line-mover"]
     }
   }
 }

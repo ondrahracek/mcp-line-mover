@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **[SPEC.md](SPEC.md) is the source of truth.** It uses RFC 2119 SHALL/SHOULD/MAY language and is detailed enough to drive implementation directly. When code and spec disagree, fix the code (or, if the spec is wrong, update the spec first and reference the change in the commit).
 
-Distribution: an npm package launched via `npx -y @scope/mcp-line-mover` from an MCP client's `mcpServers` config. No setup step inside the target repo.
+Distribution: an npm package launched via `npx -y mcp-line-mover` from an MCP client's `mcpServers` config. No setup step inside the target repo.
 
 ## Commands
 
@@ -30,7 +30,7 @@ Manual end-to-end testing uses the MCP Inspector against the built binary:
 npx @modelcontextprotocol/inspector node dist/index.js
 ```
 
-The package's `bin` entry must point to a shebanged `dist/index.js` so `npx -y @scope/mcp-line-mover` works after publish.
+The package's `bin` entry must point to a shebanged `dist/index.js` so `npx -y mcp-line-mover` works after publish.
 
 ## Architecture
 

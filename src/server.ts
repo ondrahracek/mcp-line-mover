@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -14,9 +15,13 @@ import {
   undoInputShape,
 } from "./schemas.js";
 
+const pkg = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { name: string; version: string };
+
 export function buildServer(config: Config): McpServer {
   const server = new McpServer(
-    { name: "mcp-line-mover", version: "0.1.0" },
+    { name: pkg.name, version: pkg.version },
     { capabilities: { tools: {} } },
   );
 
